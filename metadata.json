@@ -1,0 +1,5 @@
+{
+  "name": "Tabletop Toolbox",
+  "description": "Essential utilities for board games: leaderboards, team generators, and more. Offline-first and shareable.",
+  "requestFramePermissions": []
+}
