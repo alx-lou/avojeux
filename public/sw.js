@@ -1,10 +1,8 @@
 const CACHE_NAME = 'avojeux-v1';
 const ASSETS_TO_CACHE = [
-  '/',
-  '/index.html',
-  '/manifest.json',
-  '/src/main.tsx',
-  '/src/index.css'
+  '/avojeux/',
+  '/avojeux/index.html',
+  '/avojeux/manifest.json'
 ];
 
 // Install event - cache essential assets
