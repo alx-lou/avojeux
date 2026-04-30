@@ -1,4 +1,4 @@
-export type ToolType = 'leaderboard' | 'teams' | 'timer' | 'dice';
+export type ToolType = 'leaderboard' | 'teams' | 'timer' | 'dice' | 'graph';
 
 export interface GameDefinition {
   id: string;
