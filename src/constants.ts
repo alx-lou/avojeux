@@ -7,7 +7,7 @@ export const GAMES: GameDefinition[] = [
     description: 'The goal is to collect as few points as possible.',
     icon: 'Layers',
     color: 'emerald',
-    tools: ['leaderboard']
+    tools: ['leaderboard', 'graph']
   },
   {
     id: 'flip7',
@@ -15,7 +15,7 @@ export const GAMES: GameDefinition[] = [
     description: 'A fast-paced card game of luck and strategy.',
     icon: 'Zap',
     color: 'blue',
-    tools: ['leaderboard']
+    tools: ['leaderboard', 'graph']
   },
   {
     id: 'codenames',
@@ -23,7 +23,7 @@ export const GAMES: GameDefinition[] = [
     description: 'Social word game of deduction and team play.',
     icon: 'Search',
     color: 'red',
-    tools: ['teams']
+    tools: ['teams', 'graph']
   },
   {
     id: 'custom',
@@ -31,6 +31,6 @@ export const GAMES: GameDefinition[] = [
     description: 'Generic tools for any board game.',
     icon: 'Dices',
     color: 'gray',
-    tools: ['leaderboard', 'teams']
+    tools: ['leaderboard', 'teams', 'graph']
   }
 ];

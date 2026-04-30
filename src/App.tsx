@@ -14,8 +14,19 @@ import {
   Zap,
   Layers,
   Search,
-  Play
+  Play,
+  LineChart as LineChartIcon
 } from 'lucide-react';
+import { 
+  LineChart, 
+  Line, 
+  XAxis, 
+  YAxis, 
+  CartesianGrid, 
+  Tooltip, 
+  ResponsiveContainer,
+  Legend
+} from 'recharts';
 import { cn } from './lib/utils';
 import { storage } from './lib/storage';
 import { Player, GameSession, AppState, GameDefinition, ToolType } from './types';
@@ -511,12 +522,38 @@ function SessionDetailView({
 }) {
   const [activeTool, setActiveTool] = useState<ToolType>(game.tools[0]);
   const [scoringPlayerId, setScoringPlayerId] = useState<string | null>(null);
+  
+  // Sequential round scoring state
+  const [activeRoundPlayerIndex, setActiveRoundPlayerIndex] = useState<number | null>(null);
+
   const sortedPlayers = [...session.players].sort((a, b) => (session.scores[b.id] || 0) - (session.scores[a.id] || 0));
 
-  const scoringPlayer = useMemo(() => 
-    session.players.find(p => p.id === scoringPlayerId),
-    [session.players, scoringPlayerId]
-  );
+  const currentScoringPlayer = useMemo(() => {
+    if (activeRoundPlayerIndex !== null) {
+      return session.players[activeRoundPlayerIndex];
+    }
+    return session.players.find(p => p.id === scoringPlayerId);
+  }, [session.players, scoringPlayerId, activeRoundPlayerIndex]);
+
+  const startRound = () => {
+    setActiveRoundPlayerIndex(0);
+  };
+
+  const handleScoreAdd = (val: number) => {
+    if (currentScoringPlayer) {
+      onAddRoundScore(currentScoringPlayer.id, val);
+      
+      if (activeRoundPlayerIndex !== null) {
+        if (activeRoundPlayerIndex < session.players.length - 1) {
+          setActiveRoundPlayerIndex(activeRoundPlayerIndex + 1);
+        } else {
+          setActiveRoundPlayerIndex(null);
+        }
+      } else {
+        setScoringPlayerId(null);
+      }
+    }
+  };
 
   return (
     <motion.div
@@ -533,14 +570,24 @@ function SessionDetailView({
             <p className="text-xs text-gray-400">{new Date(session.date).toLocaleDateString()}</p>
           </div>
         </div>
-        {!session.isFinished && (
-          <button 
-            onClick={onFinish}
-            className="text-xs font-bold text-emerald-600 bg-emerald-50 px-3 py-1.5 rounded-full hover:bg-emerald-100 transition-colors"
-          >
-            Finish Game
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          {!session.isFinished && game.id === 'flip7' && activeRoundPlayerIndex === null && (
+            <button 
+              onClick={startRound}
+              className="text-xs font-bold text-white bg-emerald-600 px-4 py-1.5 rounded-full hover:bg-emerald-700 transition-colors shadow-sm"
+            >
+              Start Round
+            </button>
+          )}
+          {!session.isFinished && (
+            <button 
+              onClick={onFinish}
+              className="text-xs font-bold text-emerald-600 bg-emerald-50 px-3 py-1.5 rounded-full hover:bg-emerald-100 transition-colors"
+            >
+              Finish Game
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Tool Switcher if multiple tools */}
@@ -562,108 +609,115 @@ function SessionDetailView({
       )}
 
       <AnimatePresence mode="wait">
-        {activeTool === 'leaderboard' && (
-          <motion.div 
-            key="leaderboard"
-            initial={{ opacity: 0, y: 10 }}
+        {(activeRoundPlayerIndex !== null || scoringPlayerId) && currentScoringPlayer ? (
+          <motion.div
+            key="focused-scorer"
+            initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            className="space-y-4"
+            exit={{ opacity: 0, y: 20 }}
+            className="fixed inset-0 z-[60] bg-black/40 backdrop-blur-sm flex items-center justify-center p-4"
           >
-            {sortedPlayers.map((player, index) => (
-              game.id === 'flip7' ? (
-                <Flip7PlayerRow 
-                  key={player.id}
-                  player={player}
-                  rank={index + 1}
-                  totalScore={session.scores[player.id] || 0}
-                  history={session.roundHistory?.[player.id] || []}
-                  isFinished={session.isFinished}
-                  onAddRound={(score) => onAddRoundScore(player.id, score)}
+            <div className="bg-white w-full max-w-sm rounded-[2rem] overflow-hidden shadow-2xl relative">
+              {game.id === 'flip7' ? (
+                <Flip7FocusedScorer 
+                  player={currentScoringPlayer}
+                  playerProgress={`${(activeRoundPlayerIndex ?? 0) + 1}/${session.players.length}`}
+                  onAddScore={handleScoreAdd}
+                  onCancel={() => {
+                    setActiveRoundPlayerIndex(null);
+                    setScoringPlayerId(null);
+                  }}
                 />
               ) : (
-                <div 
-                  key={player.id}
-                  onClick={() => !session.isFinished && setScoringPlayerId(player.id)}
-                  className={cn(
-                    "bg-white p-4 rounded-2xl border border-black/5 flex items-center justify-between transition-all cursor-pointer hover:border-emerald-200",
-                    index === 0 && !session.isFinished && "ring-2 ring-amber-400 ring-offset-2"
-                  )}
-                >
-                  <div className="flex items-center gap-4">
-                    <div className={cn(
-                      "w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm",
-                      index === 0 ? "bg-amber-100 text-amber-700" : "bg-gray-100 text-gray-500"
-                    )}>
-                      {index + 1}
-                    </div>
+                <div className="p-8 space-y-6">
+                   <div className="flex items-center justify-between">
                     <div>
-                      <h3 className="font-bold">{player.name}</h3>
-                      <p className="text-2xl font-mono font-black text-emerald-600">
-                        {session.scores[player.id] || 0}
-                      </p>
+                      <h3 className="text-2xl font-bold">Score for {currentScoringPlayer.name}</h3>
+                      <p className="text-gray-400 text-sm">Add points manually</p>
                     </div>
+                    <button onClick={() => { setActiveRoundPlayerIndex(null); setScoringPlayerId(null); }} className="p-2 bg-gray-100 rounded-full"><X size={20} /></button>
                   </div>
-
-                  {!session.isFinished && (
-                    <div className="flex items-center gap-2">
-                      <div className="w-10 h-10 bg-emerald-50 text-emerald-600 rounded-xl flex items-center justify-center font-bold">
-                        <Plus size={20} />
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )
-            ))}
-
-            {/* Legacy scoring overlay for non-Flip7 games */}
-            {game.id !== 'flip7' && scoringPlayerId && scoringPlayer && (
-              <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/20 backdrop-blur-sm">
-                <motion.div 
-                  initial={{ opacity: 0, scale: 0.9 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  className="bg-white w-full max-w-sm p-6 rounded-3xl shadow-2xl space-y-4"
-                >
-                  <div className="flex items-center justify-between">
-                    <h3 className="font-bold">Add points for {scoringPlayer.name}</h3>
-                    <button onClick={() => setScoringPlayerId(null)} className="p-2 hover:bg-black/5 rounded-full"><X size={20} /></button>
-                  </div>
-                  <div className="grid grid-cols-3 gap-2">
+                  <div className="grid grid-cols-3 gap-3">
                     {[1, 5, 10, 20, 50, -1].map(val => (
                       <button
                         key={val}
-                        onClick={() => {
-                          onUpdateScore(scoringPlayer.id, val);
-                          setScoringPlayerId(null);
-                        }}
+                        onClick={() => handleScoreAdd(val)}
                         className={cn(
-                          "py-3 rounded-xl font-bold transition-colors",
-                          val > 0 ? "bg-emerald-50 text-emerald-600 hover:bg-emerald-100" : "bg-red-50 text-red-600 hover:bg-red-100"
+                          "py-4 rounded-2xl font-bold text-lg transition-all active:scale-95",
+                          val > 0 ? "bg-emerald-50 text-emerald-600" : "bg-red-50 text-red-600"
                         )}
                       >
                         {val > 0 ? `+${val}` : val}
                       </button>
                     ))}
                   </div>
-                </motion.div>
-              </div>
-            )}
+                </div>
+              )}
+            </div>
           </motion.div>
-        )}
-
-        {activeTool === 'teams' && (
+        ) : (
           <motion.div 
-            key="teams"
+            key="leaderboard-view"
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}
+            className="space-y-4"
           >
-            <TeamGeneratorComponent 
-              players={session.players} 
-              existingTeams={session.teams}
-              onTeamsGenerated={onUpdateTeams}
-              isFinished={session.isFinished}
-            />
+            {activeTool === 'leaderboard' && (
+              <div className="space-y-3">
+                {sortedPlayers.map((player, index) => (
+                  <div 
+                    key={player.id}
+                    onClick={() => !session.isFinished && setScoringPlayerId(player.id)}
+                    className={cn(
+                      "bg-white p-5 rounded-2xl border border-black/5 flex flex-col gap-3 transition-all cursor-pointer hover:border-emerald-200 shadow-sm",
+                      index === 0 && !session.isFinished && "ring-2 ring-amber-400 ring-offset-2 shadow-amber-100"
+                    )}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className={cn(
+                          "w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm",
+                          index === 0 ? "bg-amber-100 text-amber-700" : "bg-gray-100 text-gray-500"
+                        )}>
+                          {index + 1}
+                        </div>
+                        <div>
+                          <h3 className="font-bold text-lg">{player.name}</h3>
+                          <div className="flex flex-wrap gap-1 mt-1">
+                            {session.roundHistory?.[player.id]?.slice(-5).map((score, i) => (
+                              <span key={i} className="text-[10px] font-mono text-gray-400 px-1.5 py-0.5 bg-gray-50 rounded border border-black/5">
+                                {score}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-3xl font-mono font-black text-emerald-600">
+                          {session.scores[player.id] || 0}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {activeTool === 'teams' && (
+              <TeamGeneratorComponent 
+                players={session.players} 
+                existingTeams={session.teams}
+                onTeamsGenerated={onUpdateTeams}
+                isFinished={session.isFinished}
+              />
+            )}
+
+            {activeTool === 'graph' && (
+              <ScoreProgressionChart 
+                session={session}
+              />
+            )}
           </motion.div>
         )}
       </AnimatePresence>
@@ -671,112 +725,230 @@ function SessionDetailView({
   );
 }
 
-function Flip7PlayerRow({ 
+function Flip7FocusedScorer({ 
   player, 
-  rank, 
-  totalScore, 
-  history, 
-  isFinished, 
-  onAddRound 
+  playerProgress,
+  onAddScore, 
+  onCancel 
 }: { 
   player: Player, 
-  rank: number, 
-  totalScore: number, 
-  history: number[], 
-  isFinished: boolean,
-  onAddRound: (score: number) => void,
-  key?: string
+  playerProgress: string,
+  onAddScore: (val: number) => void, 
+  onCancel: () => void 
 }) {
   const [manualValue, setManualValue] = useState<string>('');
   const [selectedCards, setSelectedCards] = useState<number[]>([]);
+  const [multiplier, setMultiplier] = useState(1);
+  const [bonuses, setBonuses] = useState<number[]>([]);
+
+  // Reset state when focusing a new player
+  useEffect(() => {
+    setManualValue('');
+    setSelectedCards([]);
+    setMultiplier(1);
+    setBonuses([]);
+  }, [player.id]);
 
   const toggleCard = (num: number) => {
     setSelectedCards(prev => prev.includes(num) ? prev.filter(n => n !== num) : [...prev, num]);
   };
 
-  const cardTotal = selectedCards.reduce((acc, curr) => acc + curr, 0);
-  const manualTotal = parseInt(manualValue) || 0;
-  const totalToAdd = cardTotal + manualTotal;
-
-  const handleAdd = () => {
-    if (totalToAdd === 0 && manualValue === '') return;
-    onAddRound(totalToAdd);
-    setManualValue('');
-    setSelectedCards([]);
+  const toggleBonus = (val: number) => {
+    setBonuses(prev => prev.includes(val) ? prev.filter(n => n !== val) : [...prev, val]);
   };
 
+  const toggleMultiplier = () => {
+    setMultiplier(prev => prev === 2 ? 1 : 2);
+  };
+
+  const baseSum = selectedCards.reduce((acc, curr) => acc + curr, 0);
+  const bonusSum = bonuses.reduce((acc, curr) => acc + curr, 0);
+  const manualTotal = parseInt(manualValue) || 0;
+  
+  const totalToAdd = (baseSum + bonusSum + manualTotal) * multiplier;
+
   return (
-    <div className={cn(
-      "bg-white p-4 rounded-2xl border border-black/5 space-y-4 transition-all",
-      rank === 1 && !isFinished && "ring-2 ring-amber-400 ring-offset-2"
-    )}>
-      {/* Header Info */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className={cn(
-            "w-6 h-6 rounded-full flex items-center justify-center font-bold text-xs",
-            rank === 1 ? "bg-amber-100 text-amber-700" : "bg-gray-100 text-gray-500"
-          )}>
-            {rank}
-          </div>
-          <h3 className="font-bold">{player.name}</h3>
+    <div className="flex flex-col h-[85vh] max-h-[700px]">
+      <div className="p-6 pb-2 border-b border-gray-100 flex items-center justify-between bg-white sticky top-0 z-10">
+        <div>
+          <h3 className="text-2xl font-black">{player.name}</h3>
+          <p className="text-gray-400 text-sm font-bold uppercase tracking-widest">{playerProgress} Players Scoring</p>
         </div>
-        <div className="text-right">
-          <p className="text-2xl font-mono font-black text-emerald-600 leading-none">{totalScore}</p>
-          <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Total</p>
-        </div>
+        <button onClick={onCancel} className="p-3 bg-gray-50 rounded-2xl text-gray-400 hover:text-gray-600 transition-colors">
+          <X size={24} />
+        </button>
       </div>
 
-      {/* Round History */}
-      {history.length > 0 && (
-        <div className="flex flex-wrap gap-1.5">
-          {history.map((score, i) => (
-            <div key={i} className="bg-gray-50 px-2 py-0.5 rounded text-[10px] font-mono font-bold text-gray-500 border border-black/5">
-              R{i+1}: {score}
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Scoring Controls */}
-      {!isFinished && (
-        <div className="space-y-3 pt-2 border-t border-black/5">
-          <div className="grid grid-cols-6 gap-1">
+      <div className="flex-1 overflow-y-auto p-6 space-y-8 pb-32">
+        {/* Card Grid */}
+        <div className="space-y-3">
+          <label className="text-[10px] font-bold uppercase tracking-[0.2em] text-gray-400 ml-1">Cards (1-12)</label>
+          <div className="grid grid-cols-4 gap-2">
             {Array.from({ length: 12 }, (_, i) => i + 1).map(num => (
               <button
                 key={num}
                 onClick={() => toggleCard(num)}
                 className={cn(
-                  "h-8 rounded-lg border text-[10px] font-bold transition-all flex items-center justify-center",
+                  "aspect-square rounded-2xl border-2 font-black text-lg transition-all",
                   selectedCards.includes(num) 
-                    ? "bg-blue-600 border-blue-600 text-white shadow-sm" 
-                    : "bg-gray-50 border-transparent text-gray-400 hover:border-gray-200"
+                    ? "bg-blue-600 border-blue-600 text-white shadow-lg shadow-blue-100 scale-105" 
+                    : "bg-white border-gray-100 text-gray-400 hover:border-gray-200"
                 )}
               >
                 {num}
               </button>
             ))}
           </div>
+        </div>
 
-          <div className="flex gap-2">
-            <input 
-              type="number" 
-              value={manualValue}
-              onChange={e => setManualValue(e.target.value)}
-              placeholder="Round pts..."
-              className="flex-1 bg-gray-50 border-none rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-emerald-500 outline-none"
-            />
+        {/* Bonus Grid */}
+        <div className="space-y-3">
+          <label className="text-[10px] font-bold uppercase tracking-[0.2em] text-gray-400 ml-1">Bonuses</label>
+          <div className="grid grid-cols-3 gap-2">
             <button
-              disabled={totalToAdd === 0 && manualValue === ''}
-              onClick={handleAdd}
-              className="bg-emerald-600 text-white px-4 py-2 rounded-xl font-bold text-sm shadow-md shadow-emerald-100 disabled:opacity-30 transition-all active:scale-95 flex items-center gap-2"
+              onClick={toggleMultiplier}
+              className={cn(
+                "py-3 rounded-xl border-2 font-black transition-all flex items-center justify-center gap-1",
+                multiplier === 2 
+                  ? "bg-orange-500 border-orange-500 text-white shadow-lg shadow-orange-100" 
+                  : "bg-white border-orange-100 text-orange-500 hover:border-orange-200"
+              )}
             >
-              <Plus size={16} />
-              <span>{totalToAdd > 0 ? `+${totalToAdd}` : 'Add'}</span>
+              x2
             </button>
+            {[2, 4, 6, 8, 10].map(val => (
+              <button
+                key={val}
+                onClick={() => toggleBonus(val)}
+                className={cn(
+                  "py-3 rounded-xl border-2 font-black transition-all flex items-center justify-center",
+                  bonuses.includes(val) 
+                    ? "bg-orange-500 border-orange-500 text-white shadow-lg shadow-orange-100" 
+                    : "bg-white border-orange-100 text-orange-500 hover:border-orange-200"
+                )}
+              >
+                +{val}
+              </button>
+            ))}
           </div>
         </div>
-      )}
+
+        {/* Manual Entry */}
+        <div className="space-y-3">
+          <label className="text-[10px] font-bold uppercase tracking-[0.2em] text-gray-400 ml-1">Manual Points</label>
+          <input 
+            type="number" 
+            value={manualValue}
+            onChange={e => setManualValue(e.target.value)}
+            placeholder="0"
+            className="w-full bg-gray-50 border-none rounded-2xl p-4 text-center text-xl font-black focus:ring-4 focus:ring-emerald-100 outline-none transition-all"
+          />
+        </div>
+      </div>
+
+      <div className="p-6 bg-white border-t border-gray-100 sticky bottom-0 z-10 flex flex-col gap-3">
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-gray-400 font-bold uppercase tracking-widest text-xs">Total this turn</span>
+          <div className="flex items-baseline gap-1">
+            <span className="text-4xl font-black text-emerald-600">{totalToAdd}</span>
+            <span className="text-gray-400 font-bold">pts</span>
+          </div>
+        </div>
+        
+        <div className="grid grid-cols-2 gap-3">
+          <button
+            onClick={() => onAddScore(0)}
+            className="bg-gray-100 text-gray-500 py-4 rounded-2xl font-bold transition-all active:scale-95 hover:bg-gray-200"
+          >
+            Skip Turn
+          </button>
+          <button
+            onClick={() => onAddScore(totalToAdd)}
+            className="bg-emerald-600 text-white py-4 rounded-2xl font-black text-lg shadow-xl shadow-emerald-200 transition-all active:scale-95"
+          >
+            Record
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ScoreProgressionChart({ session }: { session: GameSession }) {
+  const data = useMemo(() => {
+    const maxRounds = Math.max(...Object.values(session.roundHistory || {}).map(h => h.length), 0);
+    const chartData = [];
+
+    // Initial state (Round 0)
+    const initialRound: any = { name: 'Start' };
+    session.players.forEach(p => {
+      initialRound[p.name] = 0;
+    });
+    chartData.push(initialRound);
+
+    // Cumulative sums per round
+    const cumulativeScores: Record<string, number> = {};
+    session.players.forEach(p => {
+      cumulativeScores[p.id] = 0;
+    });
+
+    for (let i = 0; i < maxRounds; i++) {
+      const roundData: any = { name: `R${i + 1}` };
+      session.players.forEach(p => {
+        const roundScore = session.roundHistory?.[p.id]?.[i] || 0;
+        cumulativeScores[p.id] += roundScore;
+        roundData[p.name] = cumulativeScores[p.id];
+      });
+      chartData.push(roundData);
+    }
+    return chartData;
+  }, [session.roundHistory, session.players]);
+
+  const colors = ['#10b981', '#3b82f6', '#ef4444', '#f59e0b', '#8b5cf6', '#ec4899'];
+
+  return (
+    <div className="bg-white p-6 rounded-2xl border border-black/5 space-y-4">
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-sm font-semibold uppercase tracking-wider text-gray-500">Score Progression</h3>
+      </div>
+      <div className="h-64 w-full">
+        <ResponsiveContainer width="100%" height="100%">
+          <LineChart data={data}>
+            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
+            <XAxis 
+              dataKey="name" 
+              axisLine={false} 
+              tickLine={false} 
+              tick={{ fontSize: 10, fill: '#9ca3af' }}
+            />
+            <YAxis 
+              axisLine={false} 
+              tickLine={false} 
+              tick={{ fontSize: 10, fill: '#9ca3af' }}
+            />
+            <Tooltip 
+              contentStyle={{ 
+                borderRadius: '12px', 
+                border: 'none', 
+                boxShadow: '0 4px 12px rgba(0,0,0,0.05)',
+                fontSize: '12px'
+              }} 
+            />
+            <Legend iconType="circle" wrapperStyle={{ fontSize: '10px', paddingTop: '20px' }} />
+            {session.players.map((p, i) => (
+              <Line 
+                key={p.id} 
+                type="monotone" 
+                dataKey={p.name} 
+                stroke={colors[i % colors.length]} 
+                strokeWidth={3}
+                dot={{ r: 4, strokeWidth: 0, fill: colors[i % colors.length] }}
+                activeDot={{ r: 6 }}
+              />
+            ))}
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
     </div>
   );
 }
